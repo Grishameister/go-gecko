@@ -1,7 +1,14 @@
 module github.com/superoo7/go-gecko
 
+go 1.17
+
 require (
-	github.com/google/pprof v0.0.0-20190404155422-f8f10df84213 // indirect
-	golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c // indirect
+	github.com/mailru/easyjson v0.7.7
+	github.com/pkg/errors v0.9.1
 	gopkg.in/h2non/gock.v1 v1.0.14
+)
+
+require (
+	github.com/h2non/parth v0.0.0-20190131123155-b4df798d6542 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 )

@@ -1,36 +1,67 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"log"
+	"sync"
+	"time"
 
 	gecko "github.com/superoo7/go-gecko/v3"
 	geckoTypes "github.com/superoo7/go-gecko/v3/types"
 )
 
 func main() {
-	cg := gecko.NewClient(nil)
+	t := time.Time{}
+	allTiming := time.Now()
+	startHook := func() {
+		t = time.Now()
+	}
+
+	endHook := func() {
+		log.Println(time.Since(t))
+	}
+
+	cg := gecko.NewClient(gecko.WithStartHook(startHook), gecko.WithEndHook(endHook))
+
+	ctx := context.Background()
 	// find specific coins
 	vsCurrency := "usd"
-	ids := []string{"bitcoin", "ethereum", "steem"}
-	perPage := 1
-	page := 1
+	perPage := 250
+	// page := 3
 	sparkline := true
 	pcp := geckoTypes.PriceChangePercentageObject
 	priceChangePercentage := []string{pcp.PCP1h, pcp.PCP24h, pcp.PCP7d, pcp.PCP14d, pcp.PCP30d, pcp.PCP200d, pcp.PCP1y}
 	order := geckoTypes.OrderTypeObject.MarketCapDesc
-	market, err := cg.CoinsMarket(vsCurrency, ids, order, perPage, page, sparkline, priceChangePercentage)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Total coins: ", len(*market))
-	fmt.Println(*market)
 
-	// with pagination instead
-	ids = []string{}
-	perPage = 10
-	page = 1
-	market, err = cg.CoinsMarket(vsCurrency, ids, order, perPage, page, sparkline, priceChangePercentage)
-	fmt.Println("Total coins: ", len(*market))
-	fmt.Println(*market)
+	marketChan := make(chan *geckoTypes.CoinsMarketItem)
+	wg := sync.WaitGroup{}
+
+	for i := 1; i < 9; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			market, err := cg.CoinsMarket(ctx, vsCurrency, nil, order, perPage, i, sparkline, priceChangePercentage)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			for _, m := range market {
+				marketChan <- m
+			}
+		}()
+	}
+
+	go func() {
+		defer close(marketChan)
+		wg.Wait()
+	}()
+
+	counter := 0
+	for it := range marketChan {
+		log.Println(it)
+		counter++
+	}
+
+	log.Println(time.Since(allTiming), counter)
 }

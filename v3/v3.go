@@ -1,12 +1,16 @@
 package coingecko
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/pkg/errors"
 
 	"github.com/superoo7/go-gecko/format"
 	"github.com/superoo7/go-gecko/v3/types"
@@ -17,14 +21,42 @@ var baseURL = "https://api.coingecko.com/api/v3"
 // Client struct
 type Client struct {
 	httpClient *http.Client
+	StartHook  func()
+	EndHook    func()
+}
+
+type option func(c *Client)
+
+func WithStartHook(hook func()) func(c *Client) {
+	return func(c *Client) {
+		c.StartHook = hook
+	}
+}
+
+func WithEndHook(hook func()) func(c *Client) {
+	return func(c *Client) {
+		c.EndHook = hook
+	}
+}
+
+func WithHTTPClient(cl *http.Client) func(c *Client) {
+	return func(c *Client) {
+		c.httpClient = cl
+	}
 }
 
 // NewClient create new client object
-func NewClient(httpClient *http.Client) *Client {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
+func NewClient(opts ...option) *Client {
+	cl := &Client{}
+	for _, o := range opts {
+		o(cl)
 	}
-	return &Client{httpClient: httpClient}
+
+	if cl.httpClient == nil {
+		cl.httpClient = http.DefaultClient
+	}
+
+	return cl
 }
 
 // helper
@@ -45,17 +77,66 @@ func doReq(req *http.Request, client *http.Client) ([]byte, error) {
 	return body, nil
 }
 
+// doStreamingReq HTTP client
+func doStreamingReq(req *http.Request, client *http.Client) (io.ReadCloser, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return resp.Body, err
+	}
+
+	if 200 != resp.StatusCode {
+		return resp.Body, fmt.Errorf("return status code is %d", resp.StatusCode)
+	}
+
+	return resp.Body, nil
+}
+
 // MakeReq HTTP request helper
 func (c *Client) MakeReq(url string) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
+	if c.StartHook != nil {
+		c.StartHook()
+	}
+	if c.EndHook != nil {
+		defer c.EndHook()
+	}
 
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	resp, err := doReq(req, c.httpClient)
 	if err != nil {
 		return nil, err
 	}
+
+	return resp, err
+}
+
+// MakeStreamingReq HTTP request helper
+func (c *Client) MakeStreamingReq(ctx context.Context, url string) (io.ReadCloser, error) {
+	if c.StartHook != nil {
+		c.StartHook()
+	}
+	if c.EndHook != nil {
+		defer c.EndHook()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := doStreamingReq(req, c.httpClient)
+	if err != nil {
+		if resp != nil {
+			defer resp.Close()
+			io.Copy(io.Discard, resp)
+		}
+
+		return nil, err
+	}
+
 	return resp, err
 }
 
@@ -149,10 +230,11 @@ func (c *Client) CoinsList() (*types.CoinList, error) {
 }
 
 // CoinsMarket /coins/market
-func (c *Client) CoinsMarket(vsCurrency string, ids []string, order string, perPage int, page int, sparkline bool, priceChangePercentage []string) (*types.CoinsMarket, error) {
+func (c *Client) CoinsMarket(ctx context.Context, vsCurrency string, ids []string, order string, perPage int, page int, sparkline bool, priceChangePercentage []string) ([]*types.CoinsMarketItem, error) {
 	if len(vsCurrency) == 0 {
 		return nil, fmt.Errorf("vs_currency is required")
 	}
+
 	params := url.Values{}
 	// vs_currency
 	params.Add("vs_currency", vsCurrency)
@@ -170,6 +252,7 @@ func (c *Client) CoinsMarket(vsCurrency string, ids []string, order string, perP
 	if perPage <= 0 || perPage > 250 {
 		perPage = 100
 	}
+
 	params.Add("per_page", format.Int2String(perPage))
 	params.Add("page", format.Int2String(page))
 	// sparkline
@@ -179,17 +262,63 @@ func (c *Client) CoinsMarket(vsCurrency string, ids []string, order string, perP
 		priceChangePercentageParam := strings.Join(priceChangePercentage[:], ",")
 		params.Add("price_change_percentage", priceChangePercentageParam)
 	}
-	url := fmt.Sprintf("%s/coins/markets?%s", baseURL, params.Encode())
-	resp, err := c.MakeReq(url)
+
+	resp, err := c.MakeStreamingReq(ctx, buildUrlParams(baseURL, "/coins/markets?", params))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "male streaming req")
 	}
-	var data *types.CoinsMarket
-	err = json.Unmarshal(resp, &data)
+	defer resp.Close()
+
+	res, err := unmarshalStreaming(resp, perPage)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unmarshaling resp")
 	}
-	return data, nil
+
+	return res, nil
+}
+
+func unmarshalStreaming(reader io.ReadCloser, perPage int) ([]*types.CoinsMarketItem, error) {
+	if perPage == 0 {
+		return nil, nil
+	}
+
+	res := make([]*types.CoinsMarketItem, 0, perPage)
+
+	decoder := json.NewDecoder(reader)
+	_, err := decoder.Token()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid start token")
+	}
+
+	for decoder.More() {
+		tempItem := &types.CoinsMarketItem{}
+		err = decoder.Decode(tempItem)
+		if err != nil {
+			return nil, errors.Wrap(err, "decoding coins market item")
+		}
+
+		res = append(res, tempItem)
+	}
+
+	_, err = decoder.Token()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid end token")
+	}
+
+	return res, nil
+}
+
+func buildUrlParams(baseUrl, path string, params url.Values) string {
+	sb := strings.Builder{}
+	encodedParams := params.Encode()
+
+	sb.Grow(len(baseUrl) + len(path) + len(encodedParams))
+
+	sb.WriteString(baseUrl)
+	sb.WriteString(path)
+	sb.WriteString(encodedParams)
+
+	return sb.String()
 }
 
 // CoinsID /coins/{id}

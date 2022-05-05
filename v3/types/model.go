@@ -1,5 +1,6 @@
 package types
 
+//go:generate easyjson -all model.go
 // OrderType
 
 // OrderType in CoinGecko
@@ -115,13 +116,12 @@ type MarketDataItem struct {
 
 // CommunityDataItem map all community data item
 type CommunityDataItem struct {
-	FacebookLikes            *uint        `json:"facebook_likes"`
-	TwitterFollowers         *uint        `json:"twitter_followers"`
-	RedditAveragePosts48h    *float64     `json:"reddit_average_posts_48h"`
-	RedditAverageComments48h *float64     `json:"reddit_average_comments_48h"`
-	RedditSubscribers        *uint        `json:"reddit_subscribers"`
-	RedditAccountsActive48h  *interface{} `json:"reddit_accounts_active_48h"`
-	TelegramChannelUserCount *uint        `json:"telegram_channel_user_count"`
+	FacebookLikes            *uint    `json:"facebook_likes"`
+	TwitterFollowers         *uint    `json:"twitter_followers"`
+	RedditAveragePosts48h    *float64 `json:"reddit_average_posts_48h"`
+	RedditAverageComments48h *float64 `json:"reddit_average_comments_48h"`
+	RedditSubscribers        *uint    `json:"reddit_subscribers"`
+	TelegramChannelUserCount *uint    `json:"telegram_channel_user_count"`
 }
 
 // DeveloperDataItem map all developer data item
