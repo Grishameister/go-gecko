@@ -12,8 +12,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/superoo7/go-gecko/format"
-	"github.com/superoo7/go-gecko/v3/types"
+	"github.com/Grishameister/go-gecko/format"
+	"github.com/Grishameister/go-gecko/v3/types"
 )
 
 var baseURL = "https://api.coingecko.com/api/v3"
@@ -269,7 +269,7 @@ func (c *Client) CoinsMarket(ctx context.Context, vsCurrency string, ids []strin
 	}
 	defer resp.Close()
 
-	res, err := unmarshalStreaming(resp, perPage)
+	res, err := unmarshalStreamingCoinsMarket(resp, perPage)
 	if err != nil {
 		return nil, errors.Wrap(err, "unmarshaling resp")
 	}
@@ -277,7 +277,61 @@ func (c *Client) CoinsMarket(ctx context.Context, vsCurrency string, ids []strin
 	return res, nil
 }
 
-func unmarshalStreaming(reader io.ReadCloser, perPage int) ([]*types.CoinsMarketItem, error) {
+// CoinsCategories /coins/categories
+func (c *Client) CoinsCategories(ctx context.Context, order string) ([]*types.Category, error) {
+	params := url.Values{}
+	// order
+	if len(order) == 0 {
+		order = types.OrderTypeObject.MarketCapDesc
+	}
+	params.Add("order", order)
+
+	resp, err := c.MakeStreamingReq(ctx, buildUrlParams(baseURL, "/coins/categories?", params))
+	if err != nil {
+		return nil, errors.Wrap(err, "male streaming req")
+	}
+	defer resp.Close()
+
+	res, err := unmarshalStreamingCoinsCategories(resp, 100)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshaling resp")
+	}
+
+	return res, nil
+}
+
+func unmarshalStreamingCoinsCategories(reader io.ReadCloser, perPage int) ([]*types.Category, error) {
+	if perPage == 0 {
+		return nil, nil
+	}
+
+	res := make([]*types.Category, 0, perPage)
+
+	decoder := json.NewDecoder(reader)
+	_, err := decoder.Token()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid start token")
+	}
+
+	for decoder.More() {
+		tempItem := &types.Category{}
+		err = decoder.Decode(tempItem)
+		if err != nil {
+			return nil, errors.Wrap(err, "decoding coins market item")
+		}
+
+		res = append(res, tempItem)
+	}
+
+	_, err = decoder.Token()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid end token")
+	}
+
+	return res, nil
+}
+
+func unmarshalStreamingCoinsMarket(reader io.ReadCloser, perPage int) ([]*types.CoinsMarketItem, error) {
 	if perPage == 0 {
 		return nil, nil
 	}

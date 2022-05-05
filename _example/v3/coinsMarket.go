@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	gecko "github.com/superoo7/go-gecko/v3"
-	geckoTypes "github.com/superoo7/go-gecko/v3/types"
+	gecko "github.com/Grishameister/go-gecko/v3"
+	geckoTypes "github.com/Grishameister/go-gecko/v3/types"
 )
 
 func main() {
