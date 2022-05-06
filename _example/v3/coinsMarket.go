@@ -36,12 +36,12 @@ func main() {
 	marketChan := make(chan *geckoTypes.CoinsMarketItem)
 	wg := sync.WaitGroup{}
 
-	for i := 1; i < 9; i++ {
+	for i := 1; i < 3; i++ {
 		i := i
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			market, err := cg.CoinsMarket(ctx, vsCurrency, nil, order, perPage, i, sparkline, priceChangePercentage)
+			market, err := cg.CoinsMarket(ctx, vsCurrency, "ethereum-ecosystem", nil, order, perPage, i, sparkline, priceChangePercentage)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -59,7 +59,7 @@ func main() {
 
 	counter := 0
 	for it := range marketChan {
-		log.Println(it)
+		log.Println(it.Name)
 		counter++
 	}
 

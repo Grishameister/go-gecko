@@ -230,7 +230,7 @@ func (c *Client) CoinsList() (*types.CoinList, error) {
 }
 
 // CoinsMarket /coins/market
-func (c *Client) CoinsMarket(ctx context.Context, vsCurrency string, ids []string, order string, perPage int, page int, sparkline bool, priceChangePercentage []string) ([]*types.CoinsMarketItem, error) {
+func (c *Client) CoinsMarket(ctx context.Context, vsCurrency, category string, ids []string, order string, perPage int, page int, sparkline bool, priceChangePercentage []string) ([]*types.CoinsMarketItem, error) {
 	if len(vsCurrency) == 0 {
 		return nil, fmt.Errorf("vs_currency is required")
 	}
@@ -242,6 +242,11 @@ func (c *Client) CoinsMarket(ctx context.Context, vsCurrency string, ids []strin
 	if len(order) == 0 {
 		order = types.OrderTypeObject.MarketCapDesc
 	}
+
+	if len(category) > 0 {
+		params.Add("category", category)
+	}
+
 	params.Add("order", order)
 	// ids
 	if len(ids) != 0 {
